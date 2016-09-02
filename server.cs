@@ -147,11 +147,11 @@ function TCP_Control_Socket::onLine(%this, %line) {
 			%this.send("PLAYER_LIST_START");
 			for(%i=0;%i<ClientGroup.getCount();%i++) {
 				%client = ClientGroup.getObject(%i);
-				%this.send("PLAYER" TAB %client.getPlayerName() TAB %client.bl_id TAB %client.getRawIP() TAB %client._TCPC_getRank());
+				%this.send("PLAYER" TAB %client.getPlayerName() TAB %client.bl_id TAB %client.getRawIP() TAB %client._TCPC_getRank() TAB %client.getPing());
 			}
 			%this.send("PLAYER_LIST_END");
 			%this.log("[PLAYERS]" SPC ClientGroup.getCount() SPC "players sent");
-			%this.send("OK");
+			// not sending "OK" here as the start/end commands should be enough
 			return;
 
 		case "KICK":

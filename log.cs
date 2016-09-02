@@ -21,6 +21,8 @@ function TCP_Control_Socket::log(%this, %data) {
 	%file = TCP_Control_LogObj;
 
 	%file.openForAppend("config/server/TCP_Control/logs/" @ $TCPC::TimeInit @ ".log");
+	echo("[TCP]" SPC "[" @ %this.ip @ "]" SPC %data);
+	messageAll('', "\c2[TCP]" SPC "\c4[" @ %this.ip @ "] \c6" SPC %data);
 	%file.writeLine("[" @ getDateTime() @ "]" SPC "[" @ %this.ip @ "]" SPC %data);
 	%file.close();
 }
