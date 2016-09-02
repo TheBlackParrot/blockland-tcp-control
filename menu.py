@@ -2,11 +2,13 @@ from dialog import Dialog;
 import os;
 import sys;
 from socket import *;
-import threading;
+import multiprocessing, signal;
 import hashlib;
 import time, datetime;
 from tabulate import tabulate;
 import operator;
+
+multiprocessing.set_start_method("fork");
 
 '''
 3rd-party dependencies:
@@ -16,7 +18,7 @@ import operator;
 
 
 # sunday, sunday, sunday!
-dialog = Dialog(dialog="dialog", autowidgetsize=True);
+dialog = Dialog(dialog="dialog", compat="dialog", autowidgetsize=True);
 
 dialog.set_background_title("Blockland Server Management");
 
@@ -101,7 +103,7 @@ class MessageListener():
 
 	def send(self, data):
 		try:
-			sock.send(data + "\n");
+			self.sock.send(str.encode(data + "\n"));
 			return True;
 		except:
 			return False;
@@ -170,19 +172,20 @@ class ChatStorage():
 		message = data["message"];
 
 		return "[{}] <{}> {}".format(timestamp, name, message);
-'''
-class ChatListener(threading.Thread):
+
+class ChatListener():
 	def __init__(self):
 		self.isRunning = True;
 		self.chat = ChatStorage();
-		self.print_lines = False;
 
 	def forever(self):
 		global sock;
-		global chat_keep_going;
 
 		while self.isRunning:
 			data = sock.recv(BUFSIZ);
+
+			if not self.isRunning:
+				return;
 
 			if not data:
 				break;
@@ -191,10 +194,7 @@ class ChatListener(threading.Thread):
 
 			if parts[0] == "CHAT":
 				most_recent = self.chat.append(parts[1], parts[4]);
-
-				if self.print_lines:
-					print(self.chat.parse(most_recent[0]));
-'''
+				print(self.chat.parse(most_recent[0]));
 
 def get_players():
 	dialog.infobox("Fetching player data...");
@@ -202,7 +202,6 @@ def get_players():
 	global sock;
 
 	data = interface.fetch(data=interface.prepare(["PLAYERS"]));
-	print(data);
 
 	if not data:
 		return False;
@@ -215,14 +214,10 @@ def get_players():
 			except:
 				return False;
 
-			print(data);
-
 			if not data:
 				return False;
 			if not data[0] or data[0] == "PLAYER_LIST_END":
 				break;
-
-			print("receiving player data...");
 
 			if data[0] == "PLAYER":
 				# %this.send("PLAYER" TAB %client.getPlayerName() TAB %client.bl_id TAB %client.getRawIP() TAB %client._TCPC_getRank());
@@ -253,17 +248,22 @@ while keep_going:
 
 		elif tag == "C":
 			os.system("clear");
-			dialog.msgbox("Work in progress.");
+			# dialog.msgbox("Work in progress.");
 
-			'''
+			sock.settimeout(None);
+
+			interface.send(interface.prepare(["ENABLE_CHAT"]));
+
 			l = ChatListener();
-			thread_listener = threading.Thread(target = l.forever);
+			#thread_listener = threading.Thread(target = l.forever);
+			#thread_listener.start();
+			thread_listener = multiprocessing.Process(target=l.forever);
 			thread_listener.start();
 
 			chat_keep_going = True;
 			l.print_lines = True;
 
-			print("Use CTRL-C to leave the chat screen.\n");
+			print("Use CTRL-C or enter ':q' to leave the chat screen.\n");
 			for line in l.chat.fetch():
 				print(l.chat.parse(line));
 
@@ -273,15 +273,26 @@ while keep_going:
 
 					if not data:
 						continue;
-					
-					parsed = [auth, "CHAT", data];
 
-					sock.send(str.encode("\t".join(parsed) + "\n"));
+					elif data == ":q":
+						chat_keep_going = False;
+						thread_listener.isRunning = False;
+						thread_listener.terminate();
+						thread_listener.join();
+						break;
+					
+					interface.send(interface.prepare(["CHAT", data]));
 				except KeyboardInterrupt:
 					chat_keep_going = False;
 					thread_listener.isRunning = False;
-					del thread_listener;
-			'''
+					thread_listener.terminate();
+					thread_listener.join();
+
+			interface.send(interface.prepare(["DISABLE_CHAT"]));
+			thread_listener.terminate();
+			thread_listener.join();
+			sock.settimeout(5.0);
+
 
 		elif tag == "P":
 			players_keep_going = True;
@@ -307,6 +318,56 @@ while keep_going:
 						print(tabulate(data, headers="keys"));
 						
 						input("\nPress enter to go back.");
+
+					if tag == "K":
+						choices = [];
+						for player in data:
+							choices.append((player["name"], "", False));
+
+						code, tags = dialog.checklist("Who all do you want to kick?", choices=choices);
+						if code == dialog.OK:
+							for tag in tags:
+								response = interface.fetch(data=interface.prepare(["KICK", tag]));
+
+								if response != "OK":
+									dialog.msgbox("\Z1Cannot kick {}:\n{}".format(tag, response));
+						else:
+							continue;
+
+					if tag == "B":
+						choices = [];
+						for player in data:
+							choices.append((player["name"], "", False));
+
+						code, tags = dialog.checklist("Who all do you want to ban?", choices=choices);
+						if code == dialog.OK:
+							ban_len = None;
+							while not ban_len:
+								_code, ban_len = dialog.inputbox("How long do you want this ban to last? (in minutes)", init="1440");
+
+								if not ban_len:
+									_blen = dialog.yesno("Using the default 1,440 minutes (1 day) as the length, is this ok?")
+
+									if _blen == dialog.OK:
+										ban_len = "1440";
+										break;
+
+							if _code == dialog.OK:
+								_code, reason = dialog.inputbox("Reason for banning?", init="Banned.");
+
+								if _code == dialog.OK and ban_len:
+									for tag in tags:
+										response = interface.fetch(data=interface.prepare(["BAN", tag, ban_len, reason]));
+
+										if response != "OK":
+											dialog.msgbox("\Z1Cannot ban {}:\n{}".format(tag, response));
+								else:
+									continue;
+							else:
+								continue;
+						else:
+							continue;						
+
 
 
 	else:

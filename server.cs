@@ -80,6 +80,7 @@ function TCP_Control_Server::onConnectRequest(%this, %ip, %socket) {
 	%sock.ip = %ip;
 	%sock.socket = %socket;
 	%sock.authed = false;
+	%sock.send_chat = false;
 	%sock.log("Connection established");
 
 	TCP_Control_Clients.add(%sock);
@@ -213,6 +214,18 @@ function TCP_Control_Socket::onLine(%this, %line) {
 
 			%this.send("OK");
 			return;
+
+		case "ENABLE_CHAT":
+			%this.send_chat = true;
+			%this.log("[ENABLE_CHAT]");
+			%this.send("OK");
+			return;
+
+		case "DISABLE_CHAT":
+			%this.send_chat = false;
+			%this.log("[DISABLE_CHAT]");
+			%this.send("OK");
+			return;
 	}
 
 	%this.send("ERR 0xff INVALID_COMMAND");
@@ -255,7 +268,7 @@ package TCP_Control_Package {
 	function serverCmdMessageSent(%client, %msg) {
 		for(%i=0;%i<TCP_Control_Clients.getCount();%i++) {
 			%tclient = TCP_Control_Clients.getObject(%i);
-			if(%tclient.authed) {
+			if(%tclient.authed && %tclient.send_chat) {
 				%tclient.send("CHAT\t" @ %client.getPlayerName() @ "\t" @ %client.bl_id @ "\t" @ %client.getRawIP() @ "\t" @ %msg);
 			}
 		}
